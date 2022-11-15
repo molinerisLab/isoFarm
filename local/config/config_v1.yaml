@@ -1,7 +1,7 @@
 GENCODE_SPECIES: "hsapiens"
 # hsapiens | mmusculus
 
-GENCODE_VERSION: 32
+GENCODE_VERSION: "32"
 # 37 | M25
 
 GENOME_ASSEMBLY: "GRCh38"
@@ -9,4 +9,4 @@ GENOME_ASSEMBLY: "GRCh38"
 
 CORES: 32
 
-FASTQ_DIR: "fastq"
+FASTQ_DIR: "../../../fastq"

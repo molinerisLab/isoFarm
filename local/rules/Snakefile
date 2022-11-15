@@ -1,11 +1,10 @@
 import os
+import re
 
 configfile: "config.yaml"
 
 if os.path.exists("Snakefile_versioned.sk"):
     include: "Snakefile_versioned.sk"
-
-CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
 
 
 
@@ -17,10 +16,12 @@ CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activ
 REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
 BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "bioinfotree/task/"
 
+CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
+
 GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"gencode/dataset/"+config["GENCODE_SPECIES"]+"/"+config["GENCODE_VERSION"]
 
-FASTQ, = glob_wildcards("fastq/{fastq_x}.fastq.gz")
-SAMPLES = [re.sub("_R\\d.fastq.gz","",x) for x in FASTQ]
+FASTQ, = glob_wildcards(config["FASTQ_DIR"]+"/{fastq_x}.fastq.gz")
+SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 
 
 
@@ -31,7 +32,24 @@ SAMPLES = [re.sub("_R\\d.fastq.gz","",x) for x in FASTQ]
 
 rule all:
 	input:
-		"multi_SalmonQuant.gz"
+		"multi_SalmonQuant.header_added.gz"
+
+
+
+#################
+#
+#  Generic Rules
+#
+
+rule header_added_gz:
+	input:
+		"{file}.gz"
+	output:
+		"{file}.header_added.gz"
+	shell:"""
+		{CONDA_ACTIVATE} bit_rnaseq_3; \
+		(bawk -M {input} | cut -f 2 | transpose; zcat {input} ) | gzip > {output}
+	"""
 
 
 
@@ -46,7 +64,7 @@ rule salmon_pe:
 	input:
 		fastq1=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
 		fastq2=config["FASTQ_DIR"]+"/{sample}_R2_001.fastq.gz",
-		salmon_index=GENCODE_DIR+config["GENOME_ASSEMBLY"]+"_salmon_index"
+		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
 	output:
 		"{sample}_quant/quant.sf"
 	shell:"""
@@ -55,13 +73,13 @@ rule salmon_pe:
 			-l A \
 			-1 {input.fastq1} -2 {input.fastq2} \
 			-o `dirname {output}` \
-			-p config["CORES"]
+			-p {config[CORES]}
 	"""
 
 rule salmon_se:
 	input:
 		fastq=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
-		salmon_index=GENCODE_DIR+config["GENOME_ASSEMBLY"]+"_salmon_index"
+		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
 	output:
 		"{sample}_quant/quant.sf"
 	shell: """
@@ -70,7 +88,7 @@ rule salmon_se:
 			-l A \
 			-r {input.fastq} \
 			-o `dirname {output}` \
-			-p config["CORES"]
+			-p {config[CORES]}
 	"""
 
 rule multi_SalmonQuant:
@@ -81,20 +99,37 @@ rule multi_SalmonQuant:
 	shell: """
 		matrix_reduce -t '*_quant/quant.sf' | \
 		grep -v 'EffectiveLength' | \
-		bawk 'BEGIN{print "Name","Length","EffectiveLength","TPM","NumReads"} {print}' | \
+		tr "|" "\t" | cut -f1,2,3,6,7,9,11- | \
 		gzip > {output}
 	"""
 
+"""
+.META: multi_SalmonQuant.gz
+	1	Sample
+	2	Transcr_GencodeID
+	3	Gene_GencodeID
+	4	Transcr_EnsemblID
+	5	Gene_name
+	6	Biotype
+	7	Lenght
+	8	EffectiveLength
+	9	TPM
+	10	NumReads
 
-#ALL_quant.TPM_matrix.gz: ALL_quant.tab.gz
-#        bawk 'NR>1{print $$2,$$1,$$5}' $< | tab2matrix -r transcript_ID | gzip > $@
+"""
+
+rule multi_SalmonQuant_matrix:
+	input:
+		"multi_SalmonQuant.gz"
+	output:
+		"multi_SalmonQuant.matrix.gz"
+	shell: """
+		bawk '{{print $2,$1,$5}}' {input} | tab2matrix -r transcript_ID | gzip > {output}
+	"""
+
 
 #ALL_quant.TPM_matrix.ALL_versions.gz:
 #        matrix_reduce -t '../../*/isoforms/ALL_quant.tab.gz' | grep -v EffectiveLength | bawk '{print $$3,$$2,$$6}' | tab2matrix | gzip > $@
-
-# Filter ALL_quant file with specific transcript ids
-#ALL_quant.TPM_matrix.%.tsv: ALL_quant.TPM_matrix.gz ../%.tsv
-#        zcat $< | filter_1col --header 1 1 <(cut -f1 $^2) > $@
 
 
 
