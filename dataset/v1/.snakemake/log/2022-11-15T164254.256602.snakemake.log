@@ -1,0 +1,2 @@
+SyntaxError in line 6 of /sto1/ref/pipelines/isoFarm/dataset/v1/Snakefile:
+Colon expected after keyword include. (Snakefile, line 6)
