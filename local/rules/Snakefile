@@ -3,4 +3,125 @@ import os
 configfile: "config.yaml"
 
 if os.path.exists("Snakefile_versioned.sk"):
-    include "Snakefile_versioned.sk"
+    include: "Snakefile_versioned.sk"
+
+CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
+
+
+
+#################
+#
+#  Global Params
+#
+
+REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
+BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "bioinfotree/task/"
+
+GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"gencode/dataset/"+config["GENCODE_SPECIES"]+"/"+config["GENCODE_VERSION"]
+
+FASTQ, = glob_wildcards("fastq/{fastq_x}.fastq.gz")
+SAMPLES = [re.sub("_R\\d.fastq.gz","",x) for x in FASTQ]
+
+
+
+###############
+#
+#  ALL targets
+#
+
+rule all:
+	input:
+		"multi_SalmonQuant.gz"
+
+
+
+######################################
+#
+#  Isoform Quantification with SALMON	
+#
+
+ruleorder: salmon_pe > salmon_se
+
+rule salmon_pe:
+	input:
+		fastq1=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
+		fastq2=config["FASTQ_DIR"]+"/{sample}_R2_001.fastq.gz",
+		salmon_index=GENCODE_DIR+config["GENOME_ASSEMBLY"]+"_salmon_index"
+	output:
+		"{sample}_quant/quant.sf"
+	shell:"""
+		salmon quant \
+			-i {input.salmon_index} \
+			-l A \
+			-1 {input.fastq1} -2 {input.fastq2} \
+			-o `dirname {output}` \
+			-p config["CORES"]
+	"""
+
+rule salmon_se:
+	input:
+		fastq=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
+		salmon_index=GENCODE_DIR+config["GENOME_ASSEMBLY"]+"_salmon_index"
+	output:
+		"{sample}_quant/quant.sf"
+	shell: """
+		salmon quant \
+			-i {input.salmon_index} \
+			-l A \
+			-r {input.fastq} \
+			-o `dirname {output}` \
+			-p config["CORES"]
+	"""
+
+rule multi_SalmonQuant:
+	input:
+		expand("{sample}_quant/quant.sf", sample=SAMPLES)
+	output:
+		"multi_SalmonQuant.gz"
+	shell: """
+		matrix_reduce -t '*_quant/quant.sf' | \
+		grep -v 'EffectiveLength' | \
+		bawk 'BEGIN{print "Name","Length","EffectiveLength","TPM","NumReads"} {print}' | \
+		gzip > {output}
+	"""
+
+
+#ALL_quant.TPM_matrix.gz: ALL_quant.tab.gz
+#        bawk 'NR>1{print $$2,$$1,$$5}' $< | tab2matrix -r transcript_ID | gzip > $@
+
+#ALL_quant.TPM_matrix.ALL_versions.gz:
+#        matrix_reduce -t '../../*/isoforms/ALL_quant.tab.gz' | grep -v EffectiveLength | bawk '{print $$3,$$2,$$6}' | tab2matrix | gzip > $@
+
+# Filter ALL_quant file with specific transcript ids
+#ALL_quant.TPM_matrix.%.tsv: ALL_quant.TPM_matrix.gz ../%.tsv
+#        zcat $< | filter_1col --header 1 1 <(cut -f1 $^2) > $@
+
+
+
+###############################
+#
+#  RSEM Isoform Quantification
+#
+
+#ifeq ($(PAIRED),Y)
+#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R1_001.fastq.gz %_R2_001.fastq.gz
+#else ifeq ($(PAIRED),2)
+#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R2_001.fastq.gz
+#else
+#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R1_001.fastq.gz
+#endif
+#        mkdir -p `dirname $@`
+#        STAR \
+#                --genomeDir $(STAR_GENOME_DIR) \
+#                --genomeLoad $(STAR_SHARED_MEMORY) \
+#                --runThreadN $(CORES) \
+#                --readFilesIn $^ \
+#                --readFilesCommand zcat\
+#                --outFileNamePrefix `dirname $@`/ \
+#                --outSAMtype None --quantMode TranscriptomeSAM \
+#                --limitBAMsortRAM 10000000000 \
+#                --outSAMunmapped Within \
+#                --outFilterMultimapNmax $(STAR_outFilterMultimapNmax)\           * as used by ENCODE *
+#                --outFilterMultimapScoreRange $(STAR_MULTIMAP_SCORE_RANGE) \     * default *
+#                $(STAR_FILTER_MISMATCH) \
+#                $(STAR_ADDITIONAL_OUTPUT)
