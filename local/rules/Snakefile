@@ -19,9 +19,18 @@ BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "bioinfotree/task/"
 CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
 
 GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"gencode/dataset/"+config["GENCODE_SPECIES"]+"/"+config["GENCODE_VERSION"]
+GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+".primary_assembly.genome.fa"
 
-FASTQ, = glob_wildcards(config["FASTQ_DIR"]+"/{fastq_x}.fastq.gz")
+STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR_VERSION"]
+
+FASTQ, = glob_wildcards(config["PATH_FASTQ"]+"/{fastq_x}.fastq.gz")
 SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
+
+#try:
+#	design = pd.read_table(config["PATH_DESIGN"])
+#except BaseException as e:
+#	print("[!] 'design' not defined!")
+#	print('The exception: {}'.format(e))
 
 
 
@@ -167,25 +176,79 @@ rule plot_SalmonQuant_isoform:
 #  RSEM Isoform Quantification
 #
 
-#ifeq ($(PAIRED),Y)
-#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R1_001.fastq.gz %_R2_001.fastq.gz
-#else ifeq ($(PAIRED),2)
-#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R2_001.fastq.gz
-#else
-#STAR/%.STAR/Aligned.toTranscriptome.out.bam: %_R1_001.fastq.gz
-#endif
-#        mkdir -p `dirname $@`
-#        STAR \
-#                --genomeDir $(STAR_GENOME_DIR) \
-#                --genomeLoad $(STAR_SHARED_MEMORY) \
-#                --runThreadN $(CORES) \
-#                --readFilesIn $^ \
-#                --readFilesCommand zcat\
-#                --outFileNamePrefix `dirname $@`/ \
-#                --outSAMtype None --quantMode TranscriptomeSAM \
-#                --limitBAMsortRAM 10000000000 \
-#                --outSAMunmapped Within \
-#                --outFilterMultimapNmax $(STAR_outFilterMultimapNmax)\           * as used by ENCODE *
-#                --outFilterMultimapScoreRange $(STAR_MULTIMAP_SCORE_RANGE) \     * default *
-#                $(STAR_FILTER_MISMATCH) \
-#                $(STAR_ADDITIONAL_OUTPUT)
+ruleorder: STAR_transcr_pe > STAR_transcr_se
+
+rule STAR_transcr_pe:
+	input:
+		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
+		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		{CONDA_ACTIVATE} bit_rnaseq_3;
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR_SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input.fastq1} {input.fastq2} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
+			{config[STAR_FILTER_MISMATCH]}
+	"""
+
+rule STAR_transcr_se:
+	input:
+		config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		{CONDA_ACTIVATE} bit_rnaseq_3;
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR_SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
+			{config[STAR_FILTER_MISMATCH]}
+	"""
+
+rule RSEM_bam_se:
+	input:
+		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
+		rsem_ref=GENCODE_DIR+"/RSEM"
+	output:
+		"RSEM/{sample}/rsem.isoforms.results"
+	shell: """
+		rsem-calculate-expression \
+			--alignments \
+			--no-bam-output \
+			-p {config[CORES]} \
+			{input.bam} \
+			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
+			RSEM/{wildcards.sample}/rsem
+	"""
+
+rule multi_RSEM:
+	input:
+		expand("RSEM/{sample}/rsem.isoforms.results", sample=SAMPLES)
+	output:
+		"multi_RSEM.gz"
+	shell: """
+		matrix_reduce -t 'RSEM/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output} 
+	"""
+

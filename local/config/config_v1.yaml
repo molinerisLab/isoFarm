@@ -9,4 +9,13 @@ GENOME_ASSEMBLY: "GRCh38"
 
 CORES: 32
 
-FASTQ_DIR: "../../../fastq"
+PATH_FASTQ: "../../../fastq"
+PATH_DESIGN: "../../../metadata.txt"
+PATH_METADATA: "metadata.txt"
+
+STAR_VERSION: "2.7.1a"
+STAR_MULTIMAP_SCORE_RANGE: 1
+STAR_outFilterMultimapNmax: 10
+STAR_FILTER_MISMATCH: "--outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04"
+STAR_OUT_SAM_TYPE: "--outSAMtype BAM Unsorted"
+STAR_SHARED_MEMORY: "LoadAndKeep"
