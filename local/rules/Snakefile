@@ -62,11 +62,11 @@ ruleorder: salmon_pe > salmon_se
 
 rule salmon_pe:
 	input:
-		fastq1=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
-		fastq2=config["FASTQ_DIR"]+"/{sample}_R2_001.fastq.gz",
+		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
+		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz",
 		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
 	output:
-		"{sample}_quant/quant.sf"
+		"Salmon/{sample}/quant.sf"
 	shell:"""
 		salmon quant \
 			-i {input.salmon_index} \
@@ -78,10 +78,10 @@ rule salmon_pe:
 
 rule salmon_se:
 	input:
-		fastq=config["FASTQ_DIR"]+"/{sample}_R1_001.fastq.gz",
+		fastq=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
 		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
 	output:
-		"{sample}_quant/quant.sf"
+		"Salmon/{sample}/quant.sf"
 	shell: """
 		salmon quant \
 			-i {input.salmon_index} \
@@ -93,11 +93,11 @@ rule salmon_se:
 
 rule multi_SalmonQuant:
 	input:
-		expand("{sample}_quant/quant.sf", sample=SAMPLES)
+		expand("Salmon/{sample}/quant.sf", sample=SAMPLES)
 	output:
 		"multi_SalmonQuant.gz"
 	shell: """
-		matrix_reduce -t '*_quant/quant.sf' | \
+		matrix_reduce -t 'Salmon/*/quant.sf' | \
 		grep -v 'EffectiveLength' | \
 		tr "|" "\t" | cut -f1,2,3,6,7,9,11- | \
 		gzip > {output}
@@ -122,14 +122,43 @@ rule multi_SalmonQuant_matrix:
 	input:
 		"multi_SalmonQuant.gz"
 	output:
-		"multi_SalmonQuant.matrix.gz"
+		"multi_SalmonQuant.TPM_matrix.gz"
 	shell: """
-		bawk '{{print $2,$1,$5}}' {input} | tab2matrix -r transcript_ID | gzip > {output}
+		{CONDA_ACTIVATE} bit_rnaseq_3; \
+		bawk '{{print $Transcr_GencodeID, $Sample, $TPM}}' {input} | sed -e 's/_S[[:digit:]]\+//g' | tab2matrix -r Transcr_GencodeID | gzip > {output}
 	"""
 
+rule multi_SalmonQuant_RDS:
+	input:
+		"multi_SalmonQuant.TPM_matrix.gz"
+	output:
+		"multi_SalmonQuant.TPM_matrix.rds"
+	shell: """
+		{CONDA_ACTIVATE} rstudio_Rv4.0.3; export LD_LIBRARY_PATH=/sto1/ref/miniconda2/envs/rstudio_Rv4.0.3/jre/lib/amd64/server; \
+		../../local/bin/rnaseqrtools-get_dgelist_obj \
+			-c {input} \
+			-m {config[PATH_METADATA]} \
+			-n none -e 0 -s 0 -x FALSE; \
+		mv dgelist_obj.rds {output}
+	"""
 
-#ALL_quant.TPM_matrix.ALL_versions.gz:
-#        matrix_reduce -t '../../*/isoforms/ALL_quant.tab.gz' | grep -v EffectiveLength | bawk '{print $$3,$$2,$$6}' | tab2matrix | gzip > $@
+rule get_enst:
+	input:
+		GENCODE_DIR+"/basic.annotation.enst2transcript_name2biotype.map"
+	output:
+		"{gene_name}.enst"
+	shell: """
+		grep {wildcards.gene_name} {input} | cut -f1 > {output}
+	"""
+
+rule plot_SalmonQuant_isoform:
+	input:
+		salmon_rds="multi_SalmonQuant.TPM_matrix.rds",
+		selected_genes="{gene_name}.enst"
+	output:
+		"multi_SalmonQuant.TPM_matrix.{gene_name}.pdf"
+	shell: """
+	"""
 
 
 
