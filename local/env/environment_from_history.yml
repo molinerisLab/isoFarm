@@ -1,0 +1,10 @@
+name: isoFarm_Env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - salmon
+  - star
+  - bioconductor-dexseq
+  - rsem
+
