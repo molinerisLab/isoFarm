@@ -8,6 +8,11 @@ Clone the repo on your machine
 ```
 git clone git@github.com:molinerisLab/isoFarm.git isoFarm
 ```
+Create conda environment and activate it before running the workflow
+```
+conda env create -f local/env/environment.yml -n isoFarm
+conda activate isoFarm
+```
 
 ## Usage
 
