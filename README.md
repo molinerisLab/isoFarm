@@ -13,7 +13,7 @@ git clone git@github.com:molinerisLab/isoFarm.git isoFarm
 
 Move to `dataset/v1` and set project specific configuration by modifying the `config.yaml` file.
 
-The run
+Then run
 ```
 snakemake -p -j N_CORES all
 ```
