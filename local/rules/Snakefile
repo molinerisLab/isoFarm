@@ -16,7 +16,7 @@ if os.path.exists("Snakefile_versioned.sk"):
 REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
 BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "bioinfotree/task/"
 
-CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
+#CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
 
 GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"gencode/dataset/"+config["GENCODE_SPECIES"]+"/"+config["GENCODE_VERSION"]
 GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+".primary_assembly.genome.fa"
@@ -43,7 +43,8 @@ SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 
 rule all:
 	input:
-		"multi_SalmonQuant.header_added.gz"
+		"multi_SalmonQuant.header_added.gz",
+		"Salmon_plot/multiPlot_SalmonQuant_done"
 
 
 
@@ -157,20 +158,37 @@ rule get_transcripts_from_gene:
 	input:
 		GENCODE_DIR+"/basic.annotation.enst2transcript_name2biotype.map"
 	output:
-		"{gene_name}.enst"
+		"Salmon_plot/{gene_name}.enst"
 	shell: """
+		mkdir -p `dirname {output}`
 		grep {wildcards.gene_name} {input} | cut -f1 > {output}
 	"""
 
 rule plot_SalmonQuant_isoform:
 	input:
 		salmon_matrix="multi_SalmonQuant.TPM_matrix.gz",
-		enst="{gene_name}.enst"
+		enst="Salmon_plot/{gene_name}.enst"
 	output:
-		"multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf"
+		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf"
 	shell: """
 		zcat {input.salmon_matrix} | filter_1col 1 --header 1 {input.enst}
 	"""
+
+def all_selected_genes():
+	with open("selected_genes.txt", mode='rt') as fh:
+		for line in fh:
+			gene = line.rstrip()
+			yield gene
+
+rule multiPlot_SalmonQuant_isoform:
+	input:
+		expand("multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf", gene_name=all_selected_genes())
+	output:
+		"Salmon_plot/multiPlot_SalmonQuant_done"
+	shell: """
+		touch {output}
+	"""
+
 
 
 
