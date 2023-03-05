@@ -14,7 +14,7 @@ if os.path.exists("Snakefile_versioned.sk"):
 #
 
 REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
-BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "bioinfotree/task/"
+BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task/"
 
 #CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
 
@@ -43,8 +43,8 @@ SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 
 rule all:
 	input:
-		"multi_SalmonQuant.header_added.gz",
-		"Salmon_plot/multiPlot_SalmonQuant_done"
+		"multi_SalmonQuant.header_added.gz"
+		#"Salmon_plot/multiPlot_SalmonQuant_done"
 
 
 
@@ -136,7 +136,6 @@ rule multi_SalmonQuant_matrix:
 	output:
 		"multi_SalmonQuant.TPM_matrix.gz"
 	shell: """
-		{CONDA_ACTIVATE} bit_rnaseq_3; \
 		bawk '{{print $transcript_id, $sample, $TPM}}' {input} | sed -e 's/_S[[:digit:]]\+//g' | tab2matrix -r transcript_id | gzip > {output}
 	"""
 
