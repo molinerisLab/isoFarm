@@ -59,7 +59,6 @@ rule header_added_gz:
 	output:
 		"{file}.header_added.gz"
 	shell:"""
-		{CONDA_ACTIVATE} bit_rnaseq_3; \
 		(bawk -M {input} | cut -f 2 | transpose; zcat {input} ) | gzip > {output}
 	"""
 
@@ -109,24 +108,17 @@ rule multi_SalmonQuant:
 	output:
 		"multi_SalmonQuant.gz"
 	shell: """
-		matrix_reduce -t 'Salmon/*/quant.sf' | \
-		grep -v 'EffectiveLength' | \
-		tr "|" "\\t" | cut -f1,2,3,6,7,9,11- | \
-		gzip > {output}
+		matrix_reduce -t 'Salmon/*/quant.sf' | grep -v 'EffectiveLength' | gzip > {output}
 	"""
 
 """
 .META: multi_SalmonQuant.gz
 	1	sample
 	2	transcript_id
-	3	gene_id
-	4	transcript_ensembl
-	5	gene_name
-	6	biotype
-	7	lenght
-	8	effectiveLength
-	9	TPM
-	10	num_reads
+	3	length
+	4	effective_length
+	5	TPM
+	6	num_reads
 
 """
 
@@ -181,7 +173,7 @@ def all_selected_genes():
 
 rule multiPlot_SalmonQuant_isoform:
 	input:
-		expand("multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf", gene_name=all_selected_genes())
+		expand("Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf", gene_name=all_selected_genes())
 	output:
 		"Salmon_plot/multiPlot_SalmonQuant_done"
 	shell: """
@@ -205,7 +197,6 @@ rule STAR_transcr_pe:
 	output:
 		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
 	shell: """
-		{CONDA_ACTIVATE} bit_rnaseq_3;
 		mkdir -p `dirname {output}`;
 		STAR \
 			--genomeDir {STAR_GENOME_DIR} \
@@ -229,7 +220,6 @@ rule STAR_transcr_se:
 	output:
 		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
 	shell: """
-		{CONDA_ACTIVATE} bit_rnaseq_3;
 		mkdir -p `dirname {output}`;
 		STAR \
 			--genomeDir {STAR_GENOME_DIR} \
