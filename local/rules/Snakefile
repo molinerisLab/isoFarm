@@ -167,7 +167,7 @@ rule get_transcripts_from_gene:
 
 rule plot_SalmonQuant_isoform:
 	input:
-		"multi_SalmonQuant.TPM_matrix.{gene_name}.gz"
+		"multi_SalmonQuant.TPM_matrix.gz"
 	output:
 		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf"
 	shell: """
