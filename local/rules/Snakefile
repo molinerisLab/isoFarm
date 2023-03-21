@@ -131,19 +131,19 @@ rule multi_SalmonQuant_matrix:
 		bawk '{{print $transcript_id, $sample, $TPM}}' {input} | sed -e 's/_S[[:digit:]]\+//g' | tab2matrix -r transcript_id | gzip > {output}
 	"""
 
-rule multi_SalmonQuant_RDS:
-	input:
-		"multi_SalmonQuant.TPM_matrix.gz"
-	output:
-		"multi_SalmonQuant.TPM_matrix.rds"
-	shell: """
-		{CONDA_ACTIVATE} rstudio_Rv4.0.3; export LD_LIBRARY_PATH=/sto1/ref/miniconda2/envs/rstudio_Rv4.0.3/jre/lib/amd64/server; \
-		../../local/bin/rnaseqrtools-get_dgelist_obj \
-			-c {input} \
-			-m {config[PATH_METADATA]} \
-			-n none -e 0 -s 0 -x FALSE; \
-		mv dgelist_obj.rds {output}
-	"""
+#rule multi_SalmonQuant_RDS:
+#	input:
+#		"multi_SalmonQuant.TPM_matrix.gz"
+#	output:
+#		"multi_SalmonQuant.TPM_matrix.rds"
+#	shell: """
+#		{CONDA_ACTIVATE} rstudio_Rv4.0.3; export LD_LIBRARY_PATH=/sto1/ref/miniconda2/envs/rstudio_Rv4.0.3/jre/lib/amd64/server; \
+#		../../local/bin/rnaseqrtools-get_dgelist_obj \
+#			-c {input} \
+#			-m {config[PATH_METADATA]} \
+#			-n none -e 0 -s 0 -x FALSE; \
+#		mv dgelist_obj.rds {output}
+#	"""
 
 rule get_transcripts_from_gene:
 	input:
@@ -155,14 +155,23 @@ rule get_transcripts_from_gene:
 		grep {wildcards.gene_name} {input} | cut -f1 > {output}
 	"""
 
+#rule get_TPM_from_transcript:
+#	input:
+#		salmon_matrix="multi_SalmonQuant.TPM_matrix.gz",
+#		enst="Salmon_plot/{gene_name}.enst"
+#	output:
+#		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}.gz"
+#	shell: """
+#		zcat {input.salmon_matrix} | filter_1col 1 --header 1 {input.enst}
+#	"""
+
 rule plot_SalmonQuant_isoform:
 	input:
-		salmon_matrix="multi_SalmonQuant.TPM_matrix.gz",
-		enst="Salmon_plot/{gene_name}.enst"
+		"multi_SalmonQuant.TPM_matrix.{gene_name}.gz"
 	output:
 		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf"
 	shell: """
-		zcat {input.salmon_matrix} | filter_1col 1 --header 1 {input.enst}
+		r ../../local/src/plot-isoform.r {input} {config[PATH_METADATA]} {config[GROUP_COL]}
 	"""
 
 def all_selected_genes():
