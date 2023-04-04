@@ -30,10 +30,10 @@ parser$add_argument("--pal", action="store", default=NULL,
                     help = "custom made palette as RDS [Default: RColorBrewer]")
 parser$add_argument("--outdir", action="store", default=".",
                     help = "output directory [Default: .]")
-parser$add_argument("--gene_id_file", action="store_true", default=NULL,
+parser$add_argument("--gene_id_file", action="store", default=NULL,
                     help = "file path with 2 columns: enst;geneID [Default: NULL]")
 # create args object
-args <- parser$parse_args()
+opt <- parser$parse_args()
 
 
 
@@ -168,21 +168,25 @@ dev.off()
 
 # 3. bar plot with transcripts faceting ----
 # filter on expressed features
-toplot_bar <- ddply(toplot, .(feature), mutate, av_feature = mean(value))
-# plot
-p_bar <- ggplot(unique(toplot[which(toplot$av_feature!=0), c("group", "av", "sd", "feature")]), aes(x = group, y = av, fill = group)) + 
-  geom_col(lwd = 0.2, width = 0.75, show.legend = T, color="black") + 
-  geom_errorbar(aes(ymax = av + sd, ymin = av - sd), size = 0.2, width = 0.3, linetype = "dashed", lwd = 0.25, position = position_dodge(width = 0.8)) + 
-  facet_wrap(~feature, scales = "free_y", ncol = 3) + 
-  theme_classic(base_size = 8, ) +
-  theme(axis.text.x = element_text(angle = 45,hjust = 1)) +
-  theme(legend.key.size = unit(4, "mm"), axis.title.x = element_blank()) + 
-  scale_fill_manual(values = pal) +
-  geom_jitter(data = toplot[which(toplot$av_feature!=0),], aes(x = group, y = value), show.legend = F, size = 0.8, width = 0.1, height = 0) +
-  ylab("TPM")
-# save
-outdir <- "Salmon_plot"
-pdf(paste0(outdir,"/bar_plot.pdf"), paper="a4", width = 5, height = 4.5) 
-print(p_bar)
-dev.off()
+barplot=F
+if(barplot){
+  toplot_bar <- ddply(toplot, .(feature), mutate, av_feature = mean(value))
+  # plot
+  p_bar <- ggplot(unique(toplot[which(toplot$av_feature!=0), c("group", "av", "sd", "feature")]), aes(x = group, y = av, fill = group)) + 
+    geom_col(lwd = 0.2, width = 0.75, show.legend = T, color="black") + 
+    geom_errorbar(aes(ymax = av + sd, ymin = av - sd), size = 0.2, width = 0.3, linetype = "dashed", lwd = 0.25, position = position_dodge(width = 0.8)) + 
+    facet_wrap(~feature, scales = "free_y", ncol = 3) + 
+    theme_classic(base_size = 8, ) +
+    theme(axis.text.x = element_text(angle = 45,hjust = 1)) +
+    theme(legend.key.size = unit(4, "mm"), axis.title.x = element_blank()) + 
+    scale_fill_manual(values = pal) +
+    geom_jitter(data = toplot[which(toplot$av_feature!=0),], aes(x = group, y = value), show.legend = F, size = 0.8, width = 0.1, height = 0) +
+    ylab("TPM")
+  # save
+  outdir <- "Salmon_plot"
+  pdf(paste0(outdir,"/bar_plot.pdf"), paper="a4", width = 5, height = 4.5) 
+  print(p_bar)
+  dev.off()
+}
+
 
