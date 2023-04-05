@@ -35,8 +35,6 @@ parser$add_argument("--gene_id_file", action="store", default=NULL,
 # create args object
 opt <- parser$parse_args()
 
-
-
 ########
 # 2. assign arguments to obj  ----
 
@@ -47,8 +45,6 @@ if(!dir.exists(outdir)) dir.create(outdir, recursive = T)
 counts <- read.delim(opt$count_matrix, header = T, row.names = 1)
 features <- scan(opt$feature, character(), quote = "")
 meta <- read.delim(opt$metadata, header = T)
-
-
 
 ##########
 # 3. create toplot obj ----
@@ -71,23 +67,9 @@ if(!is.null(opt$gene_id_file)){
 
 toplot <- ddply(toplot, .(feature, group_col), mutate, av = mean(value), sd = sd(value))
 
-#toplot$group_col <- NULL
-#if (!is.null(opt$time_order_col)){
-#  toplot[, group.by] <- factor(toplot[, group.by], levels = ord_idx)
-#}
-
-#meta_cols <- c("sample",group_col)
-#if(!is.null(opt$timepoint)){
-#  meta_cols <- c(meta_cols,opt$timepoint)
-#}
-#if(!is.null(opt$condition_col)){
-#  meta_cols <- c(meta_cols,opt$condition_col)
-#}
-#toplot <- merge(toplot, meta[,meta_cols])
-
 # set x axis and faceting columns
-if(!is.null(opt$timepoint)){
-  colnames(toplot)[which(colnames(toplot)==opt$timepoint)] <- "x_axis"
+if(!is.null(opt$time_point)){
+  colnames(toplot)[which(colnames(toplot)==opt$time_point)] <- "x_axis"
 } else {
   colnames(toplot)[which(colnames(toplot)==opt$group_col)] <- "x_axis"
 }
@@ -98,16 +80,14 @@ if(!is.null(opt$condition_col)){
 # set group order
 if(!is.null(opt$group_order)){
   group_order <- order(meta[,opt$group_order])
-  if(!is.null(opt$timepoint)){
-    toplot$x_axis <- factor(toplot$x_axis, levels = unique(meta[group_order,opt$timepoint]))
+  if(!is.null(opt$time_point)){
+    toplot$x_axis <- factor(toplot$x_axis, levels = unique(meta[group_order,opt$time_point]))
   } else {
     toplot$x_axis <- factor(toplot$x_axis, levels = unique(meta[group_order,opt$group_col]))
   }
 } else {
-  toplot[,group_col] <- factor(toplot[,group_col])
+  toplot[,"group_col"] <- factor(toplot[,"group_col"])
 }
-
-
 
 #########
 # palette ----
@@ -160,7 +140,7 @@ pdf(paste0(outdir,"/line_plot.pdf"), paper="a4", width = 4, height = 4.5)
 print(p_line_cond_facet)
 dev.off()
 
-pdf(paste0(outdir,"/line_plot_feature.pdf"), paper="a4", width = 5, height = 4.5) 
+pdf(paste0(outdir,"/line_plot_feature.pdf"), paper="a4", width = 5.5, height = 4) 
 print(p_line_feature_facet)
 dev.off()
 
@@ -168,25 +148,36 @@ dev.off()
 
 # 3. bar plot with transcripts faceting ----
 # filter on expressed features
-barplot=F
-if(barplot){
-  toplot_bar <- ddply(toplot, .(feature), mutate, av_feature = mean(value))
-  # plot
-  p_bar <- ggplot(unique(toplot[which(toplot$av_feature!=0), c("group", "av", "sd", "feature")]), aes(x = group, y = av, fill = group)) + 
-    geom_col(lwd = 0.2, width = 0.75, show.legend = T, color="black") + 
-    geom_errorbar(aes(ymax = av + sd, ymin = av - sd), size = 0.2, width = 0.3, linetype = "dashed", lwd = 0.25, position = position_dodge(width = 0.8)) + 
-    facet_wrap(~feature, scales = "free_y", ncol = 3) + 
-    theme_classic(base_size = 8, ) +
-    theme(axis.text.x = element_text(angle = 45,hjust = 1)) +
-    theme(legend.key.size = unit(4, "mm"), axis.title.x = element_blank()) + 
-    scale_fill_manual(values = pal) +
-    geom_jitter(data = toplot[which(toplot$av_feature!=0),], aes(x = group, y = value), show.legend = F, size = 0.8, width = 0.1, height = 0) +
-    ylab("TPM")
-  # save
-  outdir <- "Salmon_plot"
-  pdf(paste0(outdir,"/bar_plot.pdf"), paper="a4", width = 5, height = 4.5) 
-  print(p_bar)
-  dev.off()
+toplot_bar <- ddply(toplot, .(feature), mutate, av_feature = mean(value))
+toplot_bar <- unique(toplot_bar[which(toplot_bar$av_feature!=0), c("group_col", "av", "sd", "feature")])
+toplot_bar$group_col <- factor(toplot_bar$group_col, levels=unique(meta[group_order,opt$group_col]))
+
+# plot
+p_bar_feat <- ggplot(toplot_bar, aes(x = feature, y = av, fill = feature)) + 
+  geom_col(lwd = 0.2, width = 0.75, show.legend = T, color="black") + 
+  geom_errorbar(aes(ymax = av + sd, ymin = av - sd, group=feature), width = 0.3, lwd = 0.25, size = 0.2) +
+  #geom_jitter(data = toplot, aes(x = feature, y = value), show.legend = F, size = 0.5, width = 0.1, height = 0) +
+  facet_grid(.~group_col) + 
+  theme_classic(base_size = 8) +
+  theme(axis.text.x = element_text(angle = 45,hjust = 1)) +
+  theme(legend.key.size = unit(4, "mm"), axis.title.x = element_blank(), legend.position = "none") + 
+  scale_fill_manual(name="", values = pal[["feature"]]) +
+  ylab("TPM")
+  
+p_bar_group <- ggplot(toplot_bar, aes(x = group_col, y = av, fill = group_col, group=group_col)) + 
+  geom_col(lwd = 0.2, width = 0.75, show.legend = T, color="black") + 
+  geom_errorbar(aes(ymax = av + sd, ymin = av - sd), size = 0.2, width = 0.3, linetype = "dashed", lwd = 0.25, position = position_dodge(width = 0.8)) + 
+  facet_wrap(~feature, scales = "free_y", ncol = 3) + 
+  theme_classic(base_size = 8) +
+  theme(axis.text.x = element_text(angle = 45,hjust = 1)) +
+  theme(legend.key.size = unit(4, "mm"), axis.title.x = element_blank()) + 
+  geom_jitter(data = toplot, aes(x = group_col, y = value), show.legend = F, size = 0.8, width = 0.1, height = 0) +
+  ylab("TPM")
+# save
+pdf(paste0(outdir,"/bar_plot.pdf"), paper="a4", width = 6, height = 2.5) 
+print(p_bar_feat)
+print(p_bar_group)
+dev.off()
 }
 
 
