@@ -167,11 +167,22 @@ rule get_transcripts_from_gene:
 
 rule plot_SalmonQuant_isoform:
 	input:
-		"multi_SalmonQuant.TPM_matrix.gz"
+		count_matrix="multi_SalmonQuant.TPM_matrix.gz",
+		feature="Salmon_plot/{gene_name}.enst"
 	output:
-		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf"
+		"Salmon_plot/{gene_name}/line_plot.pdf"
 	shell: """
-		r ../../local/src/plot-isoform.r {input} {config[PATH_METADATA]} {config[GROUP_COL]}
+		../../local/src/plot-isoform.r \
+			-c {input.count_matrix} \
+			-m {config[PATH_METADATA]} \
+			-f {input.feature} \
+			-g {config[GROUP_COL]} \
+			-d {config[CONDITION_COL]} \
+			-t {config[TIME_POINT]} \
+			--group_order {config[GROUP_ORDER]} \
+			--pal {config[PALETTE]} \
+			--outdir Salmon_plot/{wildcards.gene_name}
+			--gene_id_file NULL
 	"""
 
 def all_selected_genes():
