@@ -180,9 +180,7 @@ rule plot_SalmonQuant_isoform:
 			-d {config[CONDITION_COL]} \
 			-t {config[TIME_POINT]} \
 			--group_order {config[GROUP_ORDER]} \
-			--pal {config[PALETTE]} \
 			--outdir Salmon_plot/{wildcards.gene_name}
-			--gene_id_file NULL
 	"""
 
 def all_selected_genes():

@@ -6,7 +6,7 @@ STRANDED: 2
 GENCODE_SPECIES: "hsapiens"
 # hsapiens | mmusculus
 
-GENCODE_VERSION: "32"
+GENCODE_VERSION: "42"
 # 37 | M25
 
 GENOME_ASSEMBLY: "GRCh38"
@@ -14,7 +14,7 @@ GENOME_ASSEMBLY: "GRCh38"
 
 CORES: 32
 
-PATH_FASTQ: "../../../fastq"
+PATH_FASTQ: "fastq"
 PATH_METADATA: "metadata.txt"
 
 STAR_VERSION: "2.7.1a"
@@ -26,3 +26,7 @@ STAR_SHARED_MEMORY: "LoadAndKeep"
 
 PATH_BAM: "../../../STAR/fastq"
 
+GROUP_COL: "condition"
+CONDITION_COL: "clone"
+TIME_POINT: "time"
+GROUP_ORDER: "time_order"
