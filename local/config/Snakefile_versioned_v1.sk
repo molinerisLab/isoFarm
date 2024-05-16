@@ -1,1 +1,200 @@
+###############################
+#
+#  RSEM Isoform Quantification
+#
+
+ruleorder: STAR_transcr_pe > STAR_transcr_se
+
+rule STAR_transcr_pe:
+	input:
+		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
+		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR_SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input.fastq1} {input.fastq2} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
+			{config[STAR_FILTER_MISMATCH]}
+	"""
+
+rule STAR_transcr_se:
+	input:
+		config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR_SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
+			{config[STAR_FILTER_MISMATCH]}
+	"""
+
+ruleorder: RSEM_bam_pe > RSEM_bam_se
+rule RSEM_bam_se:
+	input:
+		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
+		rsem_ref=GENCODE_DIR+"/RSEM"
+	output:
+		"RSEM/{sample}/rsem.isoforms.results"
+	shell: """
+		rsem-calculate-expression \
+			--alignments \
+			--no-bam-output \
+			-p {config[CORES]} \
+			{input.bam} \
+			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
+			RSEM/{wildcards.sample}/rsem
+	"""
+
+# to be checked
+rule RSEM_bam_pe:
+	input:
+		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
+		rsem_ref=GENCODE_DIR+"/RSEM"
+	output:
+		"RSEM/{sample}/rsem.isoforms.results"
+	shell: """
+		rsem-calculate-expression \
+			--alignments \
+			--no-bam-output \
+			-p {config[CORES]} \
+			{input.bam} \
+			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
+			RSEM/{wildcards.sample}/rsem
+	"""
+
+
+rule multi_RSEM:
+	input:
+		expand("RSEM/{sample}/rsem.isoforms.results", sample=SAMPLES)
+	output:
+		"multi_RSEM.gz"
+	shell: """
+		matrix_reduce -t 'RSEM/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output} 
+	"""
+
+"""
+.META: multi_RSEM.gz
+	1	sample
+	2	transcript_id
+	3	gene_id
+	4	length
+	5	effective_length
+	6	expected_count
+	7	TPM
+	8	FPKM
+	9	IsoPct
+
+"""
+
+
+############
+#
+#  DEXSeq
+#
+
+rule gff_exp_filter:
+	input:
+		gep_count="../../../GEP.count.exp_filter.gz",
+		ensg2gene_symbol=GENCODE_DIR+"/basic.annotation.ensg2gene_symbol2biotype.map"
+	output:
+		"exp_filter.txt"
+	shell: """
+		zcat {iinput.gep_count} | cut -f1 | unhead | translate -a -f 2 -d -j {input.ensg2gene_symbol} 1 > {output}
+	"""
+
+rule filter_gff:
+	input:
+		gff=GENCODE_DIR+"/basic.annotation.gff",
+		exp_filter="exp_filter.txt"
+	output:
+		"basic.annotation.exons.exp_filter.gff"
+	shell: """
+		bawk '{{split($9,a,"\\""); print $0,a[2]}}' {input.gff} | filter_1col 10 <(cut -f2 {input.exp_filter}) | cut -f-9 > {output}
+	"""
+
+
+if(config["STRANDED"]==0):
+	STRANDED="no"
+elif(config["STRANDED"]==1):
+	STRANDED="yes"
+elif(config["STRANDED"]==2):
+	STRANDED="reverse"
+
+#ruleorder: dexseq_count_pe > dexseq_count_se
+
+rule dexseq_count_se:
+	input:
+		dexseq_ref="exon_annotation.exp_filter.gff",
+		bam=config["PATH_BAM"]+"/{sample}.STAR/Aligned.sortedByCoord.out.bam"
+	output:
+		"DEXSeq/{sample}.count"
+	shell: """
+		mkdir -p `dirname {output}`; \
+		python {PATH_DEXSEQ}/dexseq_count.py \
+			-r pos \
+			-a 5 \
+			-f bam \
+			-s {STRANDED} \
+			{input.dexseq_ref} {input.bam} {output}
+	"""
+
+#rule dexseq_count_pe:
+#	input:
+#		dexseq_ref="exon_annotation.exp_filter.gff",
+#		bam=config["PATH_BAM"]+"/{sample}.STAR/Aligned.sortedByCoord.out.bam"
+#	output:
+#		"DEXSeq/{sample}.count"
+#	shell: """
+#		python {PATH_DEXSEQ}/dexseq_count.py \
+#			{input.dexseq_ref} \
+#			-p yes
+#			-r pos \
+#			-f bam \
+#			-s {STRANDED} \
+#			{input.bam} {output}
+#	"""
+
+
+rule dexseq_clean:
+	input:
+		"DEXSeq/{sample}.count"
+	output:
+		"DEXSeq/{sample}.count.clean"
+	shell: """
+		grep -v '^_' {input} | tr -d "\\"" > {output}
+	"""
+
+
+rule dexseq_test_DEU:
+	input:
+		expand("DEXSeq/{sample}.count.clean", sample=SAMPLES)
+	output:
+		"dxd.rds"
+	shell: """
+		Rscript runDEXseq.R
+	"""
  

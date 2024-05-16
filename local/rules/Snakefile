@@ -14,25 +14,19 @@ if os.path.exists("Snakefile_versioned.sk"):
 #
 
 REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
-BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task/"
+BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task"
 
-#CONDA_ACTIVATE="set +u; source %sminiconda2/etc/profile.d/conda.sh ; conda activate ; conda activate" % REFERENCE_ROOT
+GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"/gencode/dataset/"+config["SPECIES"]+"/"+config["GENCODE"]["VERSION"]
+GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.genome.fa"
 
-GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"gencode/dataset/"+config["GENCODE_SPECIES"]+"/"+config["GENCODE_VERSION"]
-GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+".primary_assembly.genome.fa"
+SALMON_INDEX_DIR=BIOINFO_REFERENCE_ROOT+"/ensembl/dataset/"+config["ENSEMBL"]["RELEASE"]
 
-STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR_VERSION"]
+STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR"]["VERSION"]
 
 PATH_DEXSEQ="/sto1/ref/miniconda2/envs/isoFarm_Env/lib/R/library/DEXSeq/python_scripts"
 
 FASTQ, = glob_wildcards(config["PATH_FASTQ"]+"/{fastq_x}.fastq.gz")
 SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
-
-#try:
-#	design = pd.read_table(config["PATH_DESIGN"])
-#except BaseException as e:
-#	print("[!] 'design' not defined!")
-#	print('The exception: {}'.format(e))
 
 
 
@@ -43,24 +37,7 @@ SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 
 rule all:
 	input:
-		"multi_SalmonQuant.header_added.gz"
-		#"Salmon_plot/multiPlot_SalmonQuant_done"
-
-
-
-#################
-#
-#  Generic Rules
-#
-
-rule header_added_gz:
-	input:
-		"{file}.gz"
-	output:
-		"{file}.header_added.gz"
-	shell:"""
-		(bawk -M {input} | cut -f 2 | transpose; zcat {input} ) | gzip > {output}
-	"""
+		"multi_SalmonQuant.gz"
 
 
 
@@ -75,31 +52,39 @@ rule salmon_pe:
 	input:
 		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
 		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz",
-		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
+		salmon_index=SALMON_INDEX_DIR+"/"+config["SPECIES"]+"_salmon_index"
 	output:
 		"Salmon/{sample}/quant.sf"
+	params:
+		library_type=config["SALMON"]["LIBRARY_TYPE"],
+		cores=config["CORES"]
 	shell:"""
 		salmon quant \
 			-i {input.salmon_index} \
-			-l A \
+			-l {params.library_type} \
 			-1 {input.fastq1} -2 {input.fastq2} \
+			--validateMappings \
 			-o `dirname {output}` \
-			-p {config[CORES]}
+			-p {params.cores}
 	"""
 
 rule salmon_se:
 	input:
 		fastq=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
-		salmon_index=GENCODE_DIR+"/"+config["GENOME_ASSEMBLY"]+"_salmon_index"
+		salmon_index=SALMON_INDEX_DIR+"/"+config["SPECIES"]+"_salmon_index"
 	output:
 		"Salmon/{sample}/quant.sf"
+	params:
+		library_type=config["SALMON"]["LIBRARY_TYPE"],
+		cores=config["CORES"]
 	shell: """
 		salmon quant \
 			-i {input.salmon_index} \
-			-l A \
+			-l {params.library_type} \
 			-r {input.fastq} \
+			--validateMappings \
 			-o `dirname {output}` \
-			-p {config[CORES]}
+			-p {params.cores}
 	"""
 
 rule multi_SalmonQuant:
@@ -107,296 +92,43 @@ rule multi_SalmonQuant:
 		expand("Salmon/{sample}/quant.sf", sample=SAMPLES)
 	output:
 		"multi_SalmonQuant.gz"
-	shell: """
-		matrix_reduce -t 'Salmon/*/quant.sf' | grep -v 'EffectiveLength' | gzip > {output}
-	"""
+	shell:
+		"matrix_reduce -t 'Salmon/*/quant.sf' "
+		"| bawk 'NR==1 || $2!=\"Name\" {{split($2,a,\".\"); print $1,a[1],$3~6}}' "
+		"| bawk 'NR==1 {{$1=\"Sample\"}} 1' "
+		"| gzip > {output}"
 
-"""
-.META: multi_SalmonQuant.gz
-	1	sample
-	2	transcript_id
-	3	length
-	4	effective_length
-	5	TPM
-	6	num_reads
-
-"""
-
-rule multi_SalmonQuant_matrix:
-	input:
-		"multi_SalmonQuant.gz"
-	output:
-		"multi_SalmonQuant.TPM_matrix.gz"
-	shell: """
-		bawk '{{print $transcript_id, $sample, $TPM}}' {input} | sed -e 's/_S[[:digit:]]\+//g' | tab2matrix -r transcript_id | gzip > {output}
-	"""
-
-#rule multi_SalmonQuant_RDS:
-#	input:
-#		"multi_SalmonQuant.TPM_matrix.gz"
-#	output:
-#		"multi_SalmonQuant.TPM_matrix.rds"
-#	shell: """
-#		{CONDA_ACTIVATE} rstudio_Rv4.0.3; export LD_LIBRARY_PATH=/sto1/ref/miniconda2/envs/rstudio_Rv4.0.3/jre/lib/amd64/server; \
-#		../../local/bin/rnaseqrtools-get_dgelist_obj \
-#			-c {input} \
-#			-m {config[PATH_METADATA]} \
-#			-n none -e 0 -s 0 -x FALSE; \
-#		mv dgelist_obj.rds {output}
-#	"""
 
 rule get_transcripts_from_gene:
 	input:
-		GENCODE_DIR+"/basic.annotation.enst2transcript_name2biotype.map"
+		SALMON_INDEX_DIR+"/"+config["SPECIES"]+".cdna.all.fa.gz"
 	output:
-		"Salmon_plot/{gene_name}.enst"
-	shell: """
-		mkdir -p `dirname {output}`
-		grep {wildcards.gene_name} {input} | cut -f1 > {output}
-	"""
+		"Salmon_plot/{gene_name}.transcripts.txt"
+	shell:
+		"mkdir -p `dirname {output}`; "
+		"zgrep {wildcards.gene_name} {input} "
+		"| awk '{{split($1,a,\".\"); print a[1]}}' "
+		"| tr -d \">\" > {output}"
 
-#rule get_TPM_from_transcript:
-#	input:
-#		salmon_matrix="multi_SalmonQuant.TPM_matrix.gz",
-#		enst="Salmon_plot/{gene_name}.enst"
-#	output:
-#		"Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}.gz"
-#	shell: """
-#		zcat {input.salmon_matrix} | filter_1col 1 --header 1 {input.enst}
-#	"""
-
-rule plot_SalmonQuant_isoform:
+rule plot_SalmonQuant_transcripts:
 	input:
-		count_matrix="multi_SalmonQuant.TPM_matrix.gz",
-		feature="Salmon_plot/{gene_name}.enst"
+		tpm_matrix="multi_SalmonQuant.gz",
+		transcripts="Salmon_plot/{gene_name}.transcripts.txt"
 	output:
-		"Salmon_plot/{gene_name}/line_plot.pdf"
-	shell: """
-		../../local/src/plot-isoform.r \
-			-c {input.count_matrix} \
-			-m {config[PATH_METADATA]} \
-			-f {input.feature} \
-			-g {config[GROUP_COL]} \
-			-d {config[CONDITION_COL]} \
-			-t {config[TIME_POINT]} \
-			--group_order {config[GROUP_ORDER]} \
-			--outdir Salmon_plot/{wildcards.gene_name}
-	"""
+		out="Salmon_plot/{gene_name}_transcripts.bar.pdf"
+	script: 
+		"../../local/src/plot-transcripts.R" 
 
-def all_selected_genes():
-	with open("selected_genes.txt", mode='rt') as fh:
-		for line in fh:
-			gene = line.rstrip()
-			yield gene
-
-rule multiPlot_SalmonQuant_isoform:
+# only when having a manually added alias file
+rule plot_SalmonQuant_alias:
 	input:
-		expand("Salmon_plot/multi_SalmonQuant.TPM_matrix.{gene_name}_bar.pdf", gene_name=all_selected_genes())
+		tpm_matrix="multi_SalmonQuant.gz",
+		alias="{gene_name}_alias.tsv"
 	output:
-		"Salmon_plot/multiPlot_SalmonQuant_done"
-	shell: """
-		touch {output}
-	"""
+		out="Salmon_plot/{gene_name}_alias.bar.pdf"
+	script: 
+		"../../local/src/plot-isoform_alias.R" 
 
 
 
 
-###############################
-#
-#  RSEM Isoform Quantification
-#
-
-ruleorder: STAR_transcr_pe > STAR_transcr_se
-
-rule STAR_transcr_pe:
-	input:
-		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
-		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz"
-	output:
-		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
-	shell: """
-		mkdir -p `dirname {output}`;
-		STAR \
-			--genomeDir {STAR_GENOME_DIR} \
-			--genomeLoad {config[STAR_SHARED_MEMORY]} \
-			--runThreadN {config[CORES]} \
-			--readFilesIn {input.fastq1} {input.fastq2} \
-			--readFilesCommand zcat \
-			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
-			--outSAMtype None \
-			--quantMode TranscriptomeSAM \
-			--limitBAMsortRAM 10000000000 \
-			--outSAMunmapped Within \
-			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
-			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
-			{config[STAR_FILTER_MISMATCH]}
-	"""
-
-rule STAR_transcr_se:
-	input:
-		config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz"
-	output:
-		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
-	shell: """
-		mkdir -p `dirname {output}`;
-		STAR \
-			--genomeDir {STAR_GENOME_DIR} \
-			--genomeLoad {config[STAR_SHARED_MEMORY]} \
-			--runThreadN {config[CORES]} \
-			--readFilesIn {input} \
-			--readFilesCommand zcat \
-			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
-			--outSAMtype None \
-			--quantMode TranscriptomeSAM \
-			--limitBAMsortRAM 10000000000 \
-			--outSAMunmapped Within \
-			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
-			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
-			{config[STAR_FILTER_MISMATCH]}
-	"""
-
-ruleorder: RSEM_bam_pe > RSEM_bam_se
-rule RSEM_bam_se:
-	input:
-		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
-		rsem_ref=GENCODE_DIR+"/RSEM"
-	output:
-		"RSEM/{sample}/rsem.isoforms.results"
-	shell: """
-		rsem-calculate-expression \
-			--alignments \
-			--no-bam-output \
-			-p {config[CORES]} \
-			{input.bam} \
-			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
-			RSEM/{wildcards.sample}/rsem
-	"""
-
-# to be checked
-rule RSEM_bam_pe:
-	input:
-		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
-		rsem_ref=GENCODE_DIR+"/RSEM"
-	output:
-		"RSEM/{sample}/rsem.isoforms.results"
-	shell: """
-		rsem-calculate-expression \
-			--alignments \
-			--no-bam-output \
-			-p {config[CORES]} \
-			{input.bam} \
-			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
-			RSEM/{wildcards.sample}/rsem
-	"""
-
-
-rule multi_RSEM:
-	input:
-		expand("RSEM/{sample}/rsem.isoforms.results", sample=SAMPLES)
-	output:
-		"multi_RSEM.gz"
-	shell: """
-		matrix_reduce -t 'RSEM/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output} 
-	"""
-
-"""
-.META: multi_RSEM.gz
-	1	sample
-	2	transcript_id
-	3	gene_id
-	4	length
-	5	effective_length
-	6	expected_count
-	7	TPM
-	8	FPKM
-	9	IsoPct
-
-"""
-
-
-############
-#
-#  DEXSeq
-#
-
-rule gff_exp_filter:
-	input:
-		gep_count="../../../GEP.count.exp_filter.gz",
-		ensg2gene_symbol=GENCODE_DIR+"/basic.annotation.ensg2gene_symbol2biotype.map"
-	output:
-		"exp_filter.txt"
-	shell: """
-		zcat {iinput.gep_count} | cut -f1 | unhead | translate -a -f 2 -d -j {input.ensg2gene_symbol} 1 > {output}
-	"""
-
-rule filter_gff:
-	input:
-		gff=GENCODE_DIR+"/basic.annotation.gff",
-		exp_filter="exp_filter.txt"
-	output:
-		"basic.annotation.exons.exp_filter.gff"
-	shell: """
-		bawk '{{split($9,a,"\\""); print $0,a[2]}}' {input.gff} | filter_1col 10 <(cut -f2 {input.exp_filter}) | cut -f-9 > {output}
-	"""
-
-
-if(config["STRANDED"]==0):
-	STRANDED="no"
-elif(config["STRANDED"]==1):
-	STRANDED="yes"
-elif(config["STRANDED"]==2):
-	STRANDED="reverse"
-
-#ruleorder: dexseq_count_pe > dexseq_count_se
-
-rule dexseq_count_se:
-	input:
-		dexseq_ref="exon_annotation.exp_filter.gff",
-		bam=config["PATH_BAM"]+"/{sample}.STAR/Aligned.sortedByCoord.out.bam"
-	output:
-		"DEXSeq/{sample}.count"
-	shell: """
-		mkdir -p `dirname {output}`; \
-		python {PATH_DEXSEQ}/dexseq_count.py \
-			-r pos \
-			-a 5 \
-			-f bam \
-			-s {STRANDED} \
-			{input.dexseq_ref} {input.bam} {output}
-	"""
-
-#rule dexseq_count_pe:
-#	input:
-#		dexseq_ref="exon_annotation.exp_filter.gff",
-#		bam=config["PATH_BAM"]+"/{sample}.STAR/Aligned.sortedByCoord.out.bam"
-#	output:
-#		"DEXSeq/{sample}.count"
-#	shell: """
-#		python {PATH_DEXSEQ}/dexseq_count.py \
-#			{input.dexseq_ref} \
-#			-p yes
-#			-r pos \
-#			-f bam \
-#			-s {STRANDED} \
-#			{input.bam} {output}
-#	"""
-
-
-rule dexseq_clean:
-	input:
-		"DEXSeq/{sample}.count"
-	output:
-		"DEXSeq/{sample}.count.clean"
-	shell: """
-		grep -v '^_' {input} | tr -d "\\"" > {output}
-	"""
-
-
-rule dexseq_test_DEU:
-	input:
-		expand("DEXSeq/{sample}.count.clean", sample=SAMPLES)
-	output:
-		"dxd.rds"
-	shell: """
-		Rscript runDEXseq.R
-	"""

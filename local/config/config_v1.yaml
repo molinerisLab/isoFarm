@@ -1,30 +1,34 @@
+CORES: 32
+SPECIES: hsapiens 
+# hsapiens | mmusculus
+
 STRANDED: 2
 # 0 -> unstranded
 # 1 -> forward
 # 2 -> reverse
 
-GENCODE_SPECIES: "hsapiens"
-# hsapiens | mmusculus
+GENCODE:
+  VERSION: "32" # 37 | M25
+  ASSEMBLY: GRCh38 # GRCh38 | GRCm38
 
-GENCODE_VERSION: "42"
-# 37 | M25
+ENSEMBL:
+  RELEASE: release-112
 
-GENOME_ASSEMBLY: "GRCh38"
-# GRCh38 | GRCm38
+SALMON:
+  LIBRARY_TYPE: A
 
-CORES: 32
+PATH_FASTQ: ../../../fastq
+PATH_METADATA: metadata.txt
+PATH_BAM: ../../../STAR/fastq
 
-PATH_FASTQ: "fastq"
-PATH_METADATA: "metadata.txt"
+STAR:
+  VERSION: 2.7.1a
+  MULTIMAP_SCORE_RANGE: 1
+  outFilterMultimapNmax: 10
+  FILTER_MISMATCH: --outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04
+  OUT_SAM_TYPE: --outSAMtype BAM Unsorted
+  SHARED_MEMORY: LoadAndKeep
 
-STAR_VERSION: "2.7.1a"
-STAR_MULTIMAP_SCORE_RANGE: 1
-STAR_outFilterMultimapNmax: 10
-STAR_FILTER_MISMATCH: "--outFilterMismatchNmax 999 --outFilterMismatchNoverLmax 0.04"
-STAR_OUT_SAM_TYPE: "--outSAMtype BAM Unsorted"
-STAR_SHARED_MEMORY: "LoadAndKeep"
-
-PATH_BAM: "../../../STAR/fastq"
 
 GROUP_COL: "condition"
 CONDITION_COL: "clone"
