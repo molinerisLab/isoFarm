@@ -16,7 +16,7 @@ conda activate isoFarm
 
 ## Usage
 
-Move to `dataset/v1` and set project specific configuration by modifying the `config.yaml` file.
+Move to `dataset/v1` and set project specific configuration by modifying the `config.yaml` (understand [Fragment Library Type](https://salmon.readthedocs.io/en/latest/library_type.html#fraglibtype)).
 
 Then run
 ```
