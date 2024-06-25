@@ -22,3 +22,8 @@ Then run
 ```
 snakemake -p -j N_CORES all
 ```
+
+To visualize the isoforms of a GENE_NAME run
+```
+snakemake -p -j N_CORES Salmon_plot/GENE_NAME_transcripts.bar.pdf
+```
