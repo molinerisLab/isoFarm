@@ -40,5 +40,5 @@ multi_salmon_mean_gene <- multi_salmon_mean %>%
   ungroup() %>%
   distinct()
 
-outfile <- gsub(".gz$",".top_expressed_isoform.gz",opt$multi_salmon)
-write.table(top_multi_salmon_exp, gzfile(outfile), sep = "\t", quote = F, row.names = F, col.names = T)
+outfile <- gsub(".gz$",".top_expressed_isoforms.gz",opt$multi_salmon)
+write.table(multi_salmon_mean_gene, gzfile(outfile), sep = "\t", quote = F, row.names = F, col.names = T)
