@@ -37,6 +37,7 @@ multi_salmon_mean <- merge(multi_salmon_mean, est_to_esg_to_genename, by.x="Name
 multi_salmon_mean_gene <- multi_salmon_mean %>%
   group_by(.data[[condition]], gene_name) %>%
   filter(mean_TPM == max(mean_TPM)) %>%
+  slice_sample(n = 1) %>%
   ungroup() %>%
   distinct()
 
