@@ -19,8 +19,6 @@ BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task"
 GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"/gencode/dataset/"+config["SPECIES"]+"/"+config["GENCODE"]["VERSION"]
 GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.genome.fa"
 
-SALMON_INDEX_DIR=BIOINFO_REFERENCE_ROOT+"/ensembl/dataset/"+config["ENSEMBL"]["RELEASE"]
-
 STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR"]["VERSION"]
 
 PATH_DEXSEQ="/sto1/ref/miniconda2/envs/isoFarm_Env/lib/R/library/DEXSeq/python_scripts"
@@ -52,7 +50,7 @@ rule salmon_pe:
 	input:
 		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
 		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz",
-		salmon_index=SALMON_INDEX_DIR+"/"+config["SPECIES"]+"_salmon_index"
+		salmon_index=config["PATH_ANNOT_DIR"]+"/"+config["SALMON"]["INDEX_DIR"]
 	output:
 		"Salmon/{sample}/quant.sf"
 	params:
@@ -71,7 +69,7 @@ rule salmon_pe:
 rule salmon_se:
 	input:
 		fastq=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
-		salmon_index=SALMON_INDEX_DIR+"/"+config["SPECIES"]+"_salmon_index"
+		salmon_index=config["PATH_ANNOT_DIR"]+"/"+config["SALMON"]["INDEX_DIR"]
 	output:
 		"Salmon/{sample}/quant.sf"
 	params:
@@ -94,14 +92,32 @@ rule multi_SalmonQuant:
 		"multi_SalmonQuant.gz"
 	shell:
 		"matrix_reduce -t 'Salmon/*/quant.sf' "
-		"| bawk 'NR==1 || $2!=\"Name\" {{split($2,a,\".\"); print $1,a[1],$3~6}}' "
-		"| bawk 'NR==1 {{$1=\"Sample\"}} 1' "
+		"| grep -v EffectiveLength "
+		"| bawk 'BEGIN{{print \"sample\",\"tx_id\",\"gene_id\",\"tx_ensembl_id\",\"gene_symbol\",\"tx_type\",\"length\",\"effective_length\",\"TPM\",\"nreads\"}} "
+		"{{split($2,a,\"|\"); print $1,a[1],a[2],a[5],a[6],a[8],$3,$4,$5,$6}}' "
 		"| gzip > {output}"
+
+rule get_top_expressed_isoform:
+    input:
+        "multi_SalmonQuant.gz"
+    output:
+        "multi_SalmonQuant.top_expressed_isoform.gz"
+    shell:
+        "../../local/src/top_expressed_isoform.R {input} {output}"
+
+rule get_top_expressed_isoform_gtf:
+	input:
+		top_iso="multi_SalmonQuant.top_expressed_isoform.gz",
+		gtf="/home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32/primary_assembly.annotation.gtf"
+	output:
+		"multi_SalmonQuant.top_expressed_isoform.gtf"
+	shell:
+		"grep -Ff <(zcat {input.top_iso} | cut -f2)  {input.gtf} > {output}"
 
 
 rule get_transcripts_from_gene:
 	input:
-		SALMON_INDEX_DIR+"/"+config["SPECIES"]+".cdna.all.fa.gz"
+		config["PATH_ANNOT_DIR"]+"/"+config["SALMON"]["INDEX_DIR"]+"/"+config["SPECIES"]+".cdna.all.fa.gz"
 	output:
 		"Salmon_plot/{gene_name}.transcripts.txt"
 	shell:
@@ -132,3 +148,120 @@ rule plot_SalmonQuant_alias:
 
 
 
+###############################
+#
+#  RSEM Isoform Quantification
+#
+
+ruleorder: STAR_transcr_pe > STAR_transcr_se
+
+rule STAR_transcr_pe:
+	input:
+		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
+		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR][SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input.fastq1} {input.fastq2} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR][outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR][MULTIMAP_SCORE_RANGE]} \
+			{config[STAR][FILTER_MISMATCH]}
+	"""
+
+rule STAR_transcr_se:
+	input:
+		config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz"
+	output:
+		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+	shell: """
+		mkdir -p `dirname {output}`;
+		STAR \
+			--genomeDir {STAR_GENOME_DIR} \
+			--genomeLoad {config[STAR][SHARED_MEMORY]} \
+			--runThreadN {config[CORES]} \
+			--readFilesIn {input} \
+			--readFilesCommand zcat \
+			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
+			--outSAMtype None \
+			--quantMode TranscriptomeSAM \
+			--limitBAMsortRAM 10000000000 \
+			--outSAMunmapped Within \
+			--outFilterMultimapNmax {config[STAR][outFilterMultimapNmax]} \
+			--outFilterMultimapScoreRange {config[STAR][MULTIMAP_SCORE_RANGE]} \
+			{config[STAR][FILTER_MISMATCH]}
+	"""
+
+rule rsem_calculate_expression_se:
+	input:
+		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
+		rsem_ref=GENCODE_DIR+"/RSEM/GRCh38.primary_assembly.star_index.rsem_ref"
+	output:
+		"rsem/{sample}/rsem.isoforms.results"
+	shell: 
+		"mkdir -p `dirname {output}`; "
+		"rsem-calculate-expression "
+			"--bam --no-bam-output "
+			"--estimate-rspd "
+			"--num-threads 20 "
+			"STAR/{wildcards.sample}.STAR/Aligned.toTranscriptome.out.bam "
+			"{input.rsem_ref} "
+			"rsem; "
+		"mv rsem.isoforms.results rsem/{wildcards.sample}/rsem.isoforms.results"
+
+rule multi_RSEM:
+	input:
+		expand("rsem/{sample}/rsem.isoforms.results", sample=SAMPLES)
+	output:
+		"rsem.isoforms.results"
+	shell: 
+		"matrix_reduce -t 'rsem/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output}"
+
+rule rsem_gene_symbol:
+	input:
+		rsem="rsem.isoforms.results",
+		annot=GENCODE_DIR+"/primary_assembly.annotation.ensg2gene_symbol2biotype.map"
+	output:
+		"rsem.isoforms.results.gene_symbol.gz"
+	shell:
+		"translate -a <(bawk 'BEGIN{{print \"gene_id\",\"gene_symbol\",\"gene_type\"}{print}' {input.annot}) 2 < {input.rsem} | gzip > {output}"
+
+rule get_top_expressed_isoform_rsem:
+    input:
+        "rsem.isoforms.results"
+    output:
+        "rsem.isoforms.results.top_expressed_isoform.gz"
+    shell:
+        "../../local/src/top_expressed_isoform_rsem.R {input} {output}"
+
+rule get_top_expressed_isoform_rsem_gtf:
+	input:
+		top_iso="rsem.isoforms.results.top_expressed_isoform.gz",
+		gtf="/home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32/primary_assembly.annotation.gtf"
+	output:
+		"rsem.isoforms.results.top_expressed_isoform.gtf"
+	shell:
+		"zcat {input.top_iso} | cut -f1 > transcripts.txt; "
+		"awk 'BEGIN{{while((getline<\"transcripts.txt\")>0)ids[$1]=1}} match($0, /transcript_id \"([^\"]+)\"/, m) && ids[m[1]] {{print}}' {input.gtf} > {output}; "
+		"rm transcripts.txt"
+
+rule gtf_index:
+	input:
+		"{file}.gtf"
+	output: 
+		gtf_srt="{file}.srt.gtf.gz",
+		gtf_idx="{file}.srt.gtf.gz.tbi"
+	shell:
+		"sort -k1,1 -k4,4n {input} > {wildcards.file}.srt.gtf; "
+		"bgzip {wildcards.file}.srt.gtf; "
+		"tabix -p gff {wildcards.file}.srt.gtf.gz"

@@ -10,7 +10,8 @@ print(head(df))
 df$TPM <- as.numeric(df$TPM)
 
 top_tpm <- df %>%
-  group_by(sample, gene_id) %>%
+  filter(TPM > 0) %>%
+  group_by(gene_id) %>%
   filter(TPM == max(TPM, na.rm = TRUE)) %>%
   ungroup()
 

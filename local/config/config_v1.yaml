@@ -2,6 +2,15 @@ CORES: 32
 SPECIES: hsapiens 
 # hsapiens | mmusculus
 
+PATH_FASTQ: ../../../fastq
+PATH_METADATA: ../../../metadata.txt
+PATH_BAM: ../../../STAR/fastq
+PATH_ANNOT_DIR: /home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32
+
+SALMON:
+  INDEX_DIR: salmon_index_no_decoy
+  LIBRARY_TYPE: A
+
 STRANDED: 2
 # 0 -> unstranded
 # 1 -> forward
@@ -14,12 +23,6 @@ GENCODE:
 ENSEMBL:
   RELEASE: release-112
 
-SALMON:
-  LIBRARY_TYPE: A
-
-PATH_FASTQ: ../../../fastq
-PATH_METADATA: metadata.txt
-PATH_BAM: ../../../STAR/fastq
 
 STAR:
   VERSION: 2.7.1a

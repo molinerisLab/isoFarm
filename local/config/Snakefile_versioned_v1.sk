@@ -1,114 +1,22 @@
-###############################
+#################
 #
-#  RSEM Isoform Quantification
+#  Global Params
 #
 
-ruleorder: STAR_transcr_pe > STAR_transcr_se
+REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
+BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task"
 
-rule STAR_transcr_pe:
-	input:
-		fastq1=config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz",
-		fastq2=config["PATH_FASTQ"]+"/{sample}_R2_001.fastq.gz"
-	output:
-		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
-	shell: """
-		mkdir -p `dirname {output}`;
-		STAR \
-			--genomeDir {STAR_GENOME_DIR} \
-			--genomeLoad {config[STAR_SHARED_MEMORY]} \
-			--runThreadN {config[CORES]} \
-			--readFilesIn {input.fastq1} {input.fastq2} \
-			--readFilesCommand zcat \
-			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
-			--outSAMtype None \
-			--quantMode TranscriptomeSAM \
-			--limitBAMsortRAM 10000000000 \
-			--outSAMunmapped Within \
-			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
-			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
-			{config[STAR_FILTER_MISMATCH]}
-	"""
+GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"/gencode/dataset/"+config["SPECIES"]+"/"+config["GENCODE"]["VERSION"]
+GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.genome.fa"
 
-rule STAR_transcr_se:
-	input:
-		config["PATH_FASTQ"]+"/{sample}_R1_001.fastq.gz"
-	output:
-		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
-	shell: """
-		mkdir -p `dirname {output}`;
-		STAR \
-			--genomeDir {STAR_GENOME_DIR} \
-			--genomeLoad {config[STAR_SHARED_MEMORY]} \
-			--runThreadN {config[CORES]} \
-			--readFilesIn {input} \
-			--readFilesCommand zcat \
-			--outFileNamePrefix STAR/{wildcards.sample}.STAR/ \
-			--outSAMtype None \
-			--quantMode TranscriptomeSAM \
-			--limitBAMsortRAM 10000000000 \
-			--outSAMunmapped Within \
-			--outFilterMultimapNmax {config[STAR_outFilterMultimapNmax]} \
-			--outFilterMultimapScoreRange {config[STAR_MULTIMAP_SCORE_RANGE]} \
-			{config[STAR_FILTER_MISMATCH]}
-	"""
+STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR"]["VERSION"]
 
-ruleorder: RSEM_bam_pe > RSEM_bam_se
-rule RSEM_bam_se:
-	input:
-		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
-		rsem_ref=GENCODE_DIR+"/RSEM"
-	output:
-		"RSEM/{sample}/rsem.isoforms.results"
-	shell: """
-		rsem-calculate-expression \
-			--alignments \
-			--no-bam-output \
-			-p {config[CORES]} \
-			{input.bam} \
-			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
-			RSEM/{wildcards.sample}/rsem
-	"""
+PATH_DEXSEQ="/sto1/ref/miniconda2/envs/isoFarm_Env/lib/R/library/DEXSeq/python_scripts"
 
-# to be checked
-rule RSEM_bam_pe:
-	input:
-		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
-		rsem_ref=GENCODE_DIR+"/RSEM"
-	output:
-		"RSEM/{sample}/rsem.isoforms.results"
-	shell: """
-		rsem-calculate-expression \
-			--alignments \
-			--no-bam-output \
-			-p {config[CORES]} \
-			{input.bam} \
-			{input.rsem_ref}/{config[GENOME_ASSEMBLY]}.primary_assembly.star_index.rsem_ref \
-			RSEM/{wildcards.sample}/rsem
-	"""
+FASTQ, = glob_wildcards(config["PATH_FASTQ"]+"/{fastq_x}.fastq.gz")
+SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 
 
-rule multi_RSEM:
-	input:
-		expand("RSEM/{sample}/rsem.isoforms.results", sample=SAMPLES)
-	output:
-		"multi_RSEM.gz"
-	shell: """
-		matrix_reduce -t 'RSEM/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output} 
-	"""
-
-"""
-.META: multi_RSEM.gz
-	1	sample
-	2	transcript_id
-	3	gene_id
-	4	length
-	5	effective_length
-	6	expected_count
-	7	TPM
-	8	FPKM
-	9	IsoPct
-
-"""
 
 
 ############
