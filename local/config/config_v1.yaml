@@ -1,29 +1,26 @@
+# General configuration ---
 CORES: 32
+EXTERNAL_REPO_DIR: "/home/reference_data/software"
 SPECIES: hsapiens 
 # hsapiens | mmusculus
-
-PATH_FASTQ: ../../../fastq
+GENCODE:
+  VERSION: "32" 
+  # 37 | M25
+  ASSEMBLY: GRCh38 
+  # GRCh38 | GRCm38
+ENSEMBL:
+  RELEASE: release-112
+PATH_FASTQ: fastq
 PATH_METADATA: ../../../metadata.txt
 PATH_BAM: ../../../STAR/fastq
 PATH_ANNOT_DIR: /home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32
 
+# Salmon ---
 SALMON:
   INDEX_DIR: salmon_index_no_decoy
   LIBRARY_TYPE: A
 
-STRANDED: 2
-# 0 -> unstranded
-# 1 -> forward
-# 2 -> reverse
-
-GENCODE:
-  VERSION: "32" # 37 | M25
-  ASSEMBLY: GRCh38 # GRCh38 | GRCm38
-
-ENSEMBL:
-  RELEASE: release-112
-
-
+# RSEM ---
 STAR:
   VERSION: 2.7.1a
   MULTIMAP_SCORE_RANGE: 1
@@ -32,8 +29,7 @@ STAR:
   OUT_SAM_TYPE: --outSAMtype BAM Unsorted
   SHARED_MEMORY: LoadAndKeep
 
-
-GROUP_COL: "condition"
-CONDITION_COL: "clone"
-TIME_POINT: "time"
-GROUP_ORDER: "time_order"
+# IPAFinder ---
+CONTRASTS:
+  - "p300_C_24h_vs_EV_24h"
+  - "p300_FL_24h_vs_EV_24h"

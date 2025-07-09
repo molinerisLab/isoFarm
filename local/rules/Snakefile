@@ -16,12 +16,20 @@ if os.path.exists("Snakefile_versioned.sk"):
 REFERENCE_ROOT=os.environ.get("REFERENCE_ROOT")
 BIOINFO_REFERENCE_ROOT=REFERENCE_ROOT + "/bioinfotree/task"
 
+EXTERNAL_REPO_DIR=config["EXTERNAL_REPO_DIR"]
+
 GENCODE_DIR=BIOINFO_REFERENCE_ROOT+"/gencode/dataset/"+config["SPECIES"]+"/"+config["GENCODE"]["VERSION"]
 GENCODE_GENOME_FASTA=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.genome.fa"
 
 STAR_GENOME_DIR=GENCODE_DIR+"/"+config["GENCODE"]["ASSEMBLY"]+".primary_assembly.star_index/"+config["STAR"]["VERSION"]
 
 PATH_DEXSEQ="/sto1/ref/miniconda2/envs/isoFarm_Env/lib/R/library/DEXSeq/python_scripts"
+
+# CONDA ---
+CONDA_ROOT="/opt/conda"
+CONDA_VERSION="miniconda3"
+CONDA_ACTIVATE="set +u; source "+ CONDA_ROOT + "/" + CONDA_VERSION + "/etc/profile.d/conda.sh; conda activate"
+
 
 FASTQ, = glob_wildcards(config["PATH_FASTQ"]+"/{fastq_x}.fastq.gz")
 SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
@@ -33,10 +41,17 @@ SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 #  ALL targets
 #
 
-rule all:
+rule all_salmon:
 	input:
 		"multi_SalmonQuant.gz"
 
+rule all_rsem:
+	input:
+		"rsem.isoforms.results.gz"
+
+rule all_ipafinder:
+	input:
+		expand("IPAFinder/{contrast}/IPAFinder_DUIPA.txt", contrast=config["CONTRASTS"])
 
 
 ######################################
@@ -265,3 +280,41 @@ rule gtf_index:
 		"sort -k1,1 -k4,4n {input} > {wildcards.file}.srt.gtf; "
 		"bgzip {wildcards.file}.srt.gtf; "
 		"tabix -p gff {wildcards.file}.srt.gtf.gz"
+
+
+
+#################################
+#
+# IPAfinder 
+# De novo identification and quantification of Intronic PolyAdenylation (IPA) events using standard RNA-seq data
+#
+
+rule detect_ipa:
+	input:
+		anno=EXTERNAL_REPO_DIR+"/IPAFinder/anno_files/IPAFinder_anno_hg38.txt",
+		bamfile="{contrast}_allbamfiles.txt"
+	output:
+		"IPAFinder/{contrast}/IPAFinder_IPUI.txt"
+	params:
+		cores=20
+	shell:
+		"mkdir -p $(dirname {output}); "
+		"python {EXTERNAL_REPO_DIR}/IPAFinder/IPAFinder_DetectIPA.py "
+			"-b {input.bamfile} "
+			"-anno {input.anno} "
+			"-p {params.cores} "
+			"-o {output}; "
+		"mv project IPAFinder/{wildcards.contrast}"
+
+rule infer_duipa:
+	input:
+		bamfile="{contrast}_allbamfiles.txt",
+		ipa="IPAFinder/{contrast}/IPAFinder_IPUI.txt",
+	output:
+		"IPAFinder/{contrast}/IPAFinder_DUIPA.txt"
+	shell:
+		"Rscript {EXTERNAL_REPO_DIR}/IPAFinder/Infer_DUIPA.R "
+			"-b {input.bamfile} "
+			"-I {input.ipa} "
+			"-d IPAFinder/{wildcards.contrast}/project "
+			"-o {output}"	

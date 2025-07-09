@@ -4,6 +4,9 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
+  - libcurl
+  - pkg-config
+  - gcc
   - r::r-rcolorbrewer
   - bioconda::rmats
   - conda-forge::r-dplyr
@@ -16,3 +19,13 @@ dependencies:
   - openssl
   - molinerislab::filter_1col
   - rsem
+  - pip
+  - pip:
+      - HTSeq
+      - numpy
+      - scipy
+      - argparse
+  - r-optparse
+  - r-dplyr
+  - r-stringr
+  - bioconductor-dexseq
