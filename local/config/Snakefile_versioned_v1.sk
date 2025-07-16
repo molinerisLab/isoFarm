@@ -24,6 +24,11 @@ SAMPLES = [re.sub("_R\\d_001","",x) for x in FASTQ]
 #  DEXSeq
 #
 
+STRANDED=1
+# 1 -> forward
+# 2 -> reverse
+# 0 -> unstranded
+
 rule gff_exp_filter:
 	input:
 		gep_count="../../../GEP.count.exp_filter.gz",
@@ -44,13 +49,6 @@ rule filter_gff:
 		bawk '{{split($9,a,"\\""); print $0,a[2]}}' {input.gff} | filter_1col 10 <(cut -f2 {input.exp_filter}) | cut -f-9 > {output}
 	"""
 
-
-if(config["STRANDED"]==0):
-	STRANDED="no"
-elif(config["STRANDED"]==1):
-	STRANDED="yes"
-elif(config["STRANDED"]==2):
-	STRANDED="reverse"
 
 #ruleorder: dexseq_count_pe > dexseq_count_se
 

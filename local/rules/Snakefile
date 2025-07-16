@@ -47,7 +47,7 @@ rule all_salmon:
 
 rule all_rsem:
 	input:
-		"rsem.isoforms.results.gz"
+		"rsem.isoforms.results.gene_symbol.gz"
 
 rule all_ipafinder:
 	input:
@@ -163,9 +163,9 @@ rule plot_SalmonQuant_alias:
 
 
 
-###############################
+######################################
 #
-#  RSEM Isoform Quantification
+#  Isoform Quantification with RSEM
 #
 
 ruleorder: STAR_transcr_pe > STAR_transcr_se
@@ -177,6 +177,7 @@ rule STAR_transcr_pe:
 	output:
 		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
 	shell: """
+		{CONDA_ACTIVATE} bit_rnaseq_3; 
 		mkdir -p `dirname {output}`;
 		STAR \
 			--genomeDir {STAR_GENOME_DIR} \
@@ -200,6 +201,7 @@ rule STAR_transcr_se:
 	output:
 		"STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
 	shell: """
+		{CONDA_ACTIVATE} bit_rnaseq_3;
 		mkdir -p `dirname {output}`;
 		STAR \
 			--genomeDir {STAR_GENOME_DIR} \
@@ -217,58 +219,91 @@ rule STAR_transcr_se:
 			{config[STAR][FILTER_MISMATCH]}
 	"""
 
+ruleorder: rsem_calculate_expression_pe > rsem_calculate_expression_se
 rule rsem_calculate_expression_se:
 	input:
-		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam",
-		rsem_ref=GENCODE_DIR+"/RSEM/GRCh38.primary_assembly.star_index.rsem_ref"
+		bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
 	output:
-		"rsem/{sample}/rsem.isoforms.results"
+		isoforms="rsem/{sample}/rsem.isoforms.results",
+		genes="rsem/{sample}/rsem.genes.results"
+	params:
+		rsem_index=GENCODE_DIR+"/RSEM/GRCh38.primary_assembly.star_index.rsem_ref",
+		cores=20
 	shell: 
-		"mkdir -p `dirname {output}`; "
+		"mkdir -p `dirname {output.isoforms}`; "
+		"mkdir -p rsem/{wildcards.sample}/stat; "
 		"rsem-calculate-expression "
 			"--bam --no-bam-output "
 			"--estimate-rspd "
-			"--num-threads 20 "
+			"--num-threads {params.cores} "
 			"STAR/{wildcards.sample}.STAR/Aligned.toTranscriptome.out.bam "
-			"{input.rsem_ref} "
-			"rsem; "
-		"mv rsem.isoforms.results rsem/{wildcards.sample}/rsem.isoforms.results"
+			"{params.rsem_index} "
+			"rsem_{wildcards.sample}; "
+		"mv rsem_{wildcards.sample}.isoforms.results {output.isoforms}; "
+		"mv rsem_{wildcards.sample}.genes.results {output.genes}; "
+		"mv rsem_{wildcards.sample}.stat rsem/{wildcards.sample}/stat"
 
-rule multi_RSEM:
+rule rsem_calculate_expression_pe:
+    input:
+        bam="STAR/{sample}.STAR/Aligned.toTranscriptome.out.bam"
+    output:
+        isoforms="rsem/{sample}/rsem.isoforms.results",
+        genes="rsem/{sample}/rsem.genes.results"
+    params:
+        rsem_index=GENCODE_DIR + "/RSEM/GRCh38.primary_assembly.star_index.rsem_ref",
+        cores=20
+    shell:
+        """
+        mkdir -p $(dirname {output.isoforms});
+		mkdir -p rsem/{wildcards.sample}/stat; 
+        rsem-calculate-expression \
+            --paired-end \
+            --bam --no-bam-output \
+            --estimate-rspd \
+            --num-threads {params.cores} \
+            {input.bam} \
+            {params.rsem_index} \
+            rsem_{wildcards.sample};
+        mv rsem_{wildcards.sample}.isoforms.results {output.isoforms};
+        mv rsem_{wildcards.sample}.genes.results {output.genes};
+        mv rsem_{wildcards.sample}.stat rsem/{wildcards.sample}/stat
+        """
+
+rule multi_rsem:
 	input:
 		expand("rsem/{sample}/rsem.isoforms.results", sample=SAMPLES)
 	output:
-		"rsem.isoforms.results"
+		"rsem.isoforms.results.gz"
 	shell: 
-		"matrix_reduce -t 'rsem/*/rsem.isoforms.results' | grep -v transcript_id | gzip > {output}"
+		"matrix_reduce -t 'rsem/*/rsem.isoforms.results' | bawk 'NR==1 || $2!=transcript_id' | bawk 'NR==1{{$1=\"sample\"}}1'  | gzip > {output}"
 
 rule rsem_gene_symbol:
 	input:
-		rsem="rsem.isoforms.results",
-		annot=GENCODE_DIR+"/primary_assembly.annotation.ensg2gene_symbol2biotype.map"
+		rsem="rsem.isoforms.results.gz",
+		annot=GENCODE_DIR+"/basic.annotation.enst2gene_biotype2gene_name2transcript_biotype.map"
 	output:
 		"rsem.isoforms.results.gene_symbol.gz"
 	shell:
-		"translate -a <(bawk 'BEGIN{{print \"gene_id\",\"gene_symbol\",\"gene_type\"}{print}' {input.annot}) 2 < {input.rsem} | gzip > {output}"
+		"zcat {input.rsem} | translate -a <(bawk 'BEGIN{{print \"transcript_id\",\"gene_type\",\"gene_symbol\",\"transcript_type\"}}{{print $2,$3,$4,$5}}' {input.annot}) 2 | gzip > {output}"
 
 rule get_top_expressed_isoform_rsem:
     input:
-        "rsem.isoforms.results"
+        metadata="metadata.txt",
+        rsem="rsem.isoforms.results.gene_symbol.gz"
     output:
-        "rsem.isoforms.results.top_expressed_isoform.gz"
+        expressed="rsem.isoforms.results.gene_symbol.avg_condition.expressed.gz",
+        top_iso="rsem.isoforms.results.gene_symbol.avg_condition.top_exp_isoform.gz"
     shell:
-        "../../local/src/top_expressed_isoform_rsem.R {input} {output}"
+        "../../local/src/rsem_analysis.R {input.metadata} {input.rsem} {output.expressed} {output.top_iso}"
 
-rule get_top_expressed_isoform_rsem_gtf:
+rule subset_gtf:
 	input:
-		top_iso="rsem.isoforms.results.top_expressed_isoform.gz",
+		transcr="{file}.txt", # one column file with transcript IDs
 		gtf="/home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32/primary_assembly.annotation.gtf"
 	output:
-		"rsem.isoforms.results.top_expressed_isoform.gtf"
+		"{file}.gtf"
 	shell:
-		"zcat {input.top_iso} | cut -f1 > transcripts.txt; "
-		"awk 'BEGIN{{while((getline<\"transcripts.txt\")>0)ids[$1]=1}} match($0, /transcript_id \"([^\"]+)\"/, m) && ids[m[1]] {{print}}' {input.gtf} > {output}; "
-		"rm transcripts.txt"
+		"awk 'BEGIN{{while((getline<\"{input.transcr}\")>0)ids[$1]=1}} match($0, /transcript_id \"([^\"]+)\"/, m) && ids[m[1]] {{print}}' {input.gtf} > {output}"
 
 rule gtf_index:
 	input:
@@ -318,3 +353,18 @@ rule infer_duipa:
 			"-I {input.ipa} "
 			"-d IPAFinder/{wildcards.contrast}/project "
 			"-o {output}"	
+
+
+#################
+# 
+# LABRAT
+# Quantify the usage of alternative polyadenylation and cleavage sites in RNAseq data
+#
+
+
+
+
+###############################
+#
+# turbo-rMATS
+#
