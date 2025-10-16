@@ -293,8 +293,11 @@ rule get_top_expressed_isoform_rsem:
     output:
         expressed="rsem.isoforms.results.gene_symbol.avg_condition.expressed.gz",
         top_iso="rsem.isoforms.results.gene_symbol.avg_condition.top_exp_isoform.gz"
+    params:
+        group_col=config["METADATA_GROUP_COL"]
     shell:
-        "../../local/src/rsem_analysis.R {input.metadata} {input.rsem} {output.expressed} {output.top_iso}"
+        '../../local/src/rsem_analysis.R {input.rsem} {input.metadata} {params.group_col} {output.expressed} {output.top_iso}'
+
 
 rule subset_gtf:
 	input:

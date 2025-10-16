@@ -14,6 +14,7 @@ PATH_FASTQ: fastq
 PATH_METADATA: ../../../metadata.txt
 PATH_BAM: ../../../STAR/fastq
 PATH_ANNOT_DIR: /home/reference_data/bioinfotree/task/gencode/dataset/hsapiens/32
+METADATA_GROUP_COL: genotype_general_time
 
 # Salmon ---
 SALMON:
