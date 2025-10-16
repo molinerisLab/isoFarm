@@ -37,6 +37,8 @@ conda activate isoFarm_Env
 
 ## Usage
 
+Manually create a `metadata.txt` file (tab separated) having the sample names in the first column (mandatory name: `sample`), and the sample annotations in the other columns.
+
 Move to `dataset/v1` and set project specific configuration by modifying the `config.yaml`, then run one of the following according to your needs.
 
 ```
@@ -45,4 +47,9 @@ snakemake -p -j N all_rsem
 snakemake -p -j N all_ipafinder
 ```
 
+To identify the top expressed isoform for condition and all the expressed isoforms in each condition, set the `METADATA_GROUP_COL` in the `config.yaml` and run:
+
+```
+snakemake -p -j N rsem.isoforms.results.gene_symbol.avg_condition.top_exp_isoform.gz rsem.isoforms.results.gene_symbol.avg_condition.expressed.gz
+```
 
